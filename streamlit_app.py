@@ -877,7 +877,7 @@ def _env_default_scan_mode() -> str:
 def main() -> None:
     st.set_page_config(
         page_title="Security Analysis UI",
-        page_icon="SAST",
+        page_icon="🛡️",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
