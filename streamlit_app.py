@@ -1084,10 +1084,7 @@ def main() -> None:
         st.caption("No previous reports yet.")
     else:
         for idx, report_row in enumerate(history, start=1):
-            secured_report = get_scan_report_for_user(st.session_state.app_user_id, int(report_row.get("id") or 0))
-            if not secured_report:
-                continue
-
+            # list_scan_reports_for_user already filters by user_id — no second fetch needed.
             created_text = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(report_row.get("created_at") or 0)))
             status = str(report_row.get("status", ""))
             title = (
@@ -1095,36 +1092,31 @@ def main() -> None:
                 f"{status.upper()} | findings: {report_row.get('findings_count', 0)} | {created_text}"
             )
             with st.expander(title):
-                st.write(f"Model: `{secured_report.get('model_name', '')}`")
-                st.write(f"Mode: `{secured_report.get('scan_mode', '')}`")
-                st.write(f"Risk Score: `{float(secured_report.get('risk_score') or 0):.2f}`")
-                if secured_report.get("error_message"):
-                    st.error(str(secured_report.get("error_message")))
+                st.write(f"Model: `{report_row.get('model_name', '')}`")
+                st.write(f"Mode: `{report_row.get('scan_mode', '')}`")
+                st.write(f"Risk Score: `{float(report_row.get('risk_score') or 0):.2f}`")
+                if report_row.get("error_message"):
+                    st.error(str(report_row.get("error_message")))
 
-                md_content = str(secured_report.get("report_md_content") or "")
-                logs = str(secured_report.get("scan_logs") or "")
-
-                lines = md_content.splitlines()
-                preview_text = "\n".join(lines[:80])
-
-                st.download_button(
-                    "Download MD Preview (DB)",
-                    data=preview_text.encode("utf-8"),
-                    file_name=f"scan_report_preview_{secured_report.get('id')}.md",
-                    mime="text/markdown",
-                    key=f"dl_md_preview_{secured_report.get('id')}",
-                    use_container_width=True,
-                )
+                md_content = str(report_row.get("report_md_content") or "")
+                logs = str(report_row.get("scan_logs") or "")
 
                 if md_content.strip():
+                    st.download_button(
+                        "Download Full Report (MD)",
+                        data=md_content.encode("utf-8"),
+                        file_name=f"scan_report_{report_row.get('id')}.md",
+                        mime="text/markdown",
+                        key=f"dl_md_{report_row.get('id')}",
+                        use_container_width=True,
+                    )
                     st.markdown("**Markdown Preview**")
-                    preview_key = f"preview_md_{secured_report.get('id')}"
+                    preview_key = f"preview_md_{report_row.get('id')}"
                     if st.checkbox("Show full markdown report", key=preview_key):
                         st.markdown(md_content)
                     else:
                         lines = md_content.splitlines()
-                        preview_text = "\n".join(lines[:80])
-                        st.markdown(preview_text)
+                        st.markdown("\n".join(lines[:80]))
                         if len(lines) > 80:
                             st.caption("Preview truncated. Enable full view to see complete report.")
 
