@@ -26,7 +26,7 @@ import re
 
 import streamlit as st
 
-from core.constants import BASE_DIR, DEFAULT_OPENAI_MODEL, WORKSPACE_DIR
+from core.constants import BASE_DIR, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL, DEFAULT_OLLAMA_MODEL, WORKSPACE_DIR
 from core.findings import ScanResult
 from core.orchestrator import SASTOrchestrator
 from core.parser import CodeParser
@@ -661,7 +661,9 @@ def _run_scan_pipeline(
     model_name: str,
     openai_key: str,
     openai_base_url: str | None,
-    progress: Callable[[str], None],
+    llm_provider: str = "openai",
+    gemini_key: str | None = None,
+    progress: Callable[[str], None] = lambda _: None,
     console: StreamlitScanConsole | None = None,
 ) -> tuple[Path, Path | None, ScanResult]:
     """Run scan and return (markdown_report, pdf_report, scan_result)."""
@@ -733,7 +735,8 @@ def _run_scan_pipeline(
         model_name=model_name,
         openai_key=openai_key,
         openai_base_url=openai_base_url,
-        llm_provider="openai",
+        gemini_key=gemini_key,
+        llm_provider=llm_provider,
     )
     scan_result = orchestrator.analyze(console=console)
 
@@ -915,6 +918,7 @@ def main() -> None:
 
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip() or None
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip() or None
 
     def load_repos_with_token(token: str) -> None:
         user = get_authenticated_user(token)
@@ -1157,7 +1161,18 @@ def main() -> None:
         st.rerun()
 
     st.subheader(f"Step 3: Scan options - {selected_name}")
-    openai_model = st.text_input("Model", value=os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL))
+    llm_provider_choice = st.selectbox(
+        "LLM Provider",
+        options=["openai", "gemini", "ollama"],
+        index=0,
+        help="Select the AI provider to use for vulnerability analysis.",
+    )
+    _model_defaults = {
+        "openai": os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        "gemini": os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+        "ollama": os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
+    }
+    openai_model = st.text_input("Model", value=_model_defaults.get(llm_provider_choice, DEFAULT_OPENAI_MODEL))
     default_mode = _env_default_scan_mode()
     scan_mode = st.radio(
         "Scan mode",
@@ -1175,8 +1190,12 @@ def main() -> None:
     if not run_scan:
         return
 
-    if not openai_key:
+    # Validate that the required API key for the chosen provider is available.
+    if llm_provider_choice == "openai" and not openai_key:
         st.error("OPENAI_API_KEY must be set as a server environment variable. Direct key entry is disabled for security.")
+        return
+    if llm_provider_choice == "gemini" and not gemini_key:
+        st.error("GEMINI_API_KEY must be set as a server environment variable to use the Gemini provider.")
         return
 
     # Strong ownership guard: selected repo must exist in current user's GitHub repo listing.
@@ -1242,6 +1261,8 @@ def main() -> None:
                 model_name=openai_model,
                 openai_key=openai_key,
                 openai_base_url=openai_base_url,
+                llm_provider=llm_provider_choice,
+                gemini_key=gemini_key,
                 progress=progress_update,
                 console=console,
             )
