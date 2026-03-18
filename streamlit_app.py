@@ -173,9 +173,9 @@ def create_app_user(username: str, password: str) -> tuple[bool, str]:
     """Create a local platform user."""
     username = username.strip().lower()
     if len(username) < 3:
-        return False, "Username minimum 3 characters hona chahiye."
+        return False, "Username must be at least 3 characters."
     if len(password) < 8:
-        return False, "Password minimum 8 characters hona chahiye."
+        return False, "Password must be at least 8 characters."
 
     salt = secrets.token_hex(16)
     pwd_hash = _hash_password(password, salt)
@@ -191,9 +191,9 @@ def create_app_user(username: str, password: str) -> tuple[bool, str]:
                 (username, pwd_hash, salt, now, now),
             )
             conn.commit()
-        return True, "Signup successful. Ab login karein."
+        return True, "Signup successful. Please login to continue."
     except sqlite3.IntegrityError:
-        return False, "Ye username already exists."
+        return False, "This username already exists."
 
 
 def authenticate_app_user(username: str, password: str) -> tuple[bool, str]:
@@ -1000,7 +1000,7 @@ def main() -> None:
         entered_client_id = st.text_input(
             "GitHub OAuth Client ID",
             value=st.session_state.github_oauth_client_id,
-            help="GitHub OAuth app ka client id daalein.",
+            help="Enter your GitHub OAuth App client ID.",
         ).strip()
         if entered_client_id != st.session_state.github_oauth_client_id:
             st.session_state.github_oauth_client_id = entered_client_id
@@ -1011,8 +1011,8 @@ def main() -> None:
 
         client_id = st.session_state.github_oauth_client_id
         if not client_id:
-            st.warning("OAuth Client ID required hai.")
-            st.info("Client ID ko env me bhi set kar sakte hain: GITHUB_OAUTH_CLIENT_ID")
+            st.warning("GitHub OAuth Client ID is required.")
+            st.info("You can also set it via the GITHUB_OAUTH_CLIENT_ID environment variable.")
             return
 
         if st.button("Login with GitHub", type="primary", use_container_width=True):
@@ -1037,7 +1037,7 @@ def main() -> None:
                     st.session_state.user_login,
                     token,
                 )
-                st.success("GitHub connected. Next login se dubara OAuth nahi maangega.")
+                st.success("GitHub connected. Your token is saved — no repeated OAuth prompts on next login.")
                 st.rerun()
             except Exception as exc:
                 st.error(f"GitHub login failed: {exc}")
@@ -1136,7 +1136,7 @@ def main() -> None:
             needle = repo_search.strip().lower()
             filtered = [r for r in repos if needle in str(r.get("full_name", "")).lower()]
 
-        st.caption("Repository par click karein. Fir scan options screen open hogi.")
+        st.caption("Click 'Open' on a repository to configure and start a scan.")
         cols = st.columns(3)
         for idx, repo in enumerate(filtered):
             with cols[idx % 3]:
@@ -1176,7 +1176,7 @@ def main() -> None:
         return
 
     if not openai_key:
-        st.error("OPENAI_API_KEY server env me set hona chahiye. UI me key input disabled hai.")
+        st.error("OPENAI_API_KEY must be set as a server environment variable. Direct key entry is disabled for security.")
         return
 
     # Strong ownership guard: selected repo must exist in current user's GitHub repo listing.
