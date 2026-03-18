@@ -1333,7 +1333,7 @@ def main() -> None:
             report_pdf_blob=None,
             scan_logs="\n".join(scan_logs),
             error_message=str(exc),
-            started_at=int(time.time()),
+            started_at=scan_started_at,
             finished_at=int(time.time()),
         )
         st.exception(exc)
