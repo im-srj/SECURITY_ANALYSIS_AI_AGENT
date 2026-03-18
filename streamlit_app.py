@@ -1019,32 +1019,84 @@ def main() -> None:
             st.info("You can also set it via the GITHUB_OAUTH_CLIENT_ID environment variable.")
             return
 
+        device_flow = st.session_state.device_flow
+
+        if device_flow:
+            # Active device flow: do a single non-blocking poll, then rerun after the interval.
+            verify_uri = str(device_flow.get("verification_uri", "https://github.com/login/device"))
+            user_code = str(device_flow.get("user_code", ""))
+            expires_at = int(device_flow.get("expires_at", 0))
+
+            st.info(f"Enter this code at GitHub: **{user_code}**")
+            st.link_button("Open GitHub Device Login Page", verify_uri, use_container_width=True)
+
+            if time.time() > expires_at:
+                st.error("GitHub login session expired. Please start again.")
+                st.session_state.device_flow = {}
+                return
+
+            # Single poll attempt — does not block the thread for long.
+            try:
+                payload = _github_post_form(
+                    "https://github.com/login/oauth/access_token",
+                    {
+                        "client_id": client_id,
+                        "device_code": str(device_flow.get("device_code", "")),
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                )
+
+                if "access_token" in payload:
+                    token = str(payload["access_token"])
+                    load_repos_with_token(token)
+                    save_user_github_auth(
+                        st.session_state.app_username,
+                        st.session_state.user_login,
+                        token,
+                    )
+                    st.session_state.device_flow = {}
+                    st.success("GitHub connected. Your token is saved — no repeated OAuth prompts on next login.")
+                    st.rerun()
+                    return
+
+                err = str(payload.get("error", ""))
+                if err == "slow_down":
+                    device_flow["interval"] = int(device_flow.get("interval", 5)) + 2
+                    st.session_state.device_flow = device_flow
+                elif err in {"expired_token", "access_denied"}:
+                    st.error(f"GitHub login failed: {err}")
+                    st.session_state.device_flow = {}
+                    return
+                # "authorization_pending" — fall through to sleep + rerun
+            except Exception as exc:
+                st.error(f"GitHub poll error: {exc}")
+                st.session_state.device_flow = {}
+                return
+
+            interval = int(device_flow.get("interval", 5))
+            remaining = max(0, int(expires_at - time.time()))
+            st.caption(f"Waiting for GitHub authorization... ({remaining}s remaining). Retrying every {interval}s.")
+            if st.button("Cancel GitHub Login", use_container_width=True):
+                st.session_state.device_flow = {}
+                st.rerun()
+            time.sleep(interval)
+            st.rerun()
+            return
+
+        # No active device flow — show the start button.
         if st.button("Login with GitHub", type="primary", use_container_width=True):
             try:
                 flow = start_github_device_login(client_id)
-                verify_uri = str(flow.get("verification_uri", "https://github.com/login/device"))
-                user_code = str(flow.get("user_code", ""))
-                st.info(f"GitHub Code: {user_code}")
-                st.link_button("Open GitHub Login Page", verify_uri, use_container_width=True)
-
-                with st.spinner("Waiting for GitHub authorization..."):
-                    token = poll_github_device_token(
-                        client_id=client_id,
-                        device_code=str(flow.get("device_code", "")),
-                        interval_seconds=int(flow.get("interval", 5) or 5),
-                        max_wait_seconds=int(flow.get("expires_in", 900) or 900),
-                    )
-
-                load_repos_with_token(token)
-                save_user_github_auth(
-                    st.session_state.app_username,
-                    st.session_state.user_login,
-                    token,
-                )
-                st.success("GitHub connected. Your token is saved — no repeated OAuth prompts on next login.")
+                st.session_state.device_flow = {
+                    "device_code": str(flow.get("device_code", "")),
+                    "user_code": str(flow.get("user_code", "")),
+                    "verification_uri": str(flow.get("verification_uri", "https://github.com/login/device")),
+                    "interval": int(flow.get("interval", 5) or 5),
+                    "expires_at": int(time.time()) + int(flow.get("expires_in", 900) or 900),
+                }
                 st.rerun()
             except Exception as exc:
-                st.error(f"GitHub login failed: {exc}")
+                st.error(f"Failed to start GitHub login: {exc}")
         return
 
     repos: list[dict] = st.session_state.repos
