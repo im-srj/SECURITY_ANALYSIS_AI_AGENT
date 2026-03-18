@@ -1257,15 +1257,24 @@ def main() -> None:
             st.warning("PDF generation skipped because `reportlab` is not installed.")
 
         md_bytes = md_path.read_bytes()
-        md_lines = md_bytes.decode("utf-8", errors="ignore").splitlines()
-        md_preview = "\n".join(md_lines[:80]).encode("utf-8")
-        st.download_button(
-            "Download MD Preview",
-            data=md_preview,
-            file_name=f"preview_{md_path.name}",
+        dl_col1, dl_col2 = st.columns(2)
+        dl_col1.download_button(
+            "Download Full Report (MD)",
+            data=md_bytes,
+            file_name=md_path.name,
             mime="text/markdown",
             use_container_width=True,
         )
+        if pdf_path:
+            dl_col2.download_button(
+                "Download Report (PDF)",
+                data=pdf_path.read_bytes(),
+                file_name=pdf_path.name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        else:
+            dl_col2.info("PDF not available (reportlab not installed).")
 
         with st.expander("Preview markdown report"):
             st.markdown(md_path.read_text(encoding="utf-8", errors="ignore"))
