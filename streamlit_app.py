@@ -1223,6 +1223,18 @@ def main() -> None:
             status="running",
         )
 
+        # Capture diff BEFORE the scan so cache_hit reflects the true pre-scan state.
+        # After the pipeline saves the cache, compute_diff() would always return 0.
+        pre_cache = ScanCache(str(local_repo))
+        changed_count = added_count = deleted_count = 0
+        cache_hit = False
+        if incremental and pre_cache.is_warm():
+            pre_changed, pre_added, pre_deleted = pre_cache.compute_diff()
+            changed_count = len(pre_changed)
+            added_count = len(pre_added)
+            deleted_count = len(pre_deleted)
+            cache_hit = changed_count == 0 and added_count == 0 and deleted_count == 0
+
         with st.spinner("Running security scan..."):
             md_path, pdf_path, scan_result = _run_scan_pipeline(
                 target_path=str(local_repo),
@@ -1259,15 +1271,8 @@ def main() -> None:
             st.markdown(md_path.read_text(encoding="utf-8", errors="ignore"))
 
         # Persist extended scan metadata into big DB tables.
-        cache = ScanCache(str(local_repo))
-        changed_count = added_count = deleted_count = 0
-        cache_hit = False
-        if incremental and cache.is_warm():
-            changed, added, deleted = cache.compute_diff()
-            changed_count = len(changed)
-            added_count = len(added)
-            deleted_count = len(deleted)
-            cache_hit = changed_count == 0 and added_count == 0 and deleted_count == 0
+        # Reload cache to get the updated commit hash written by the pipeline.
+        post_cache = ScanCache(str(local_repo))
 
         upsert_workspace_repo(
             user_id=st.session_state.app_user_id,
@@ -1281,7 +1286,7 @@ def main() -> None:
         upsert_scan_cache_state(
             user_id=st.session_state.app_user_id,
             repo_full_name=selected_name,
-            last_commit=cache._last_commit or "",
+            last_commit=post_cache._last_commit or "",
             changed_count=changed_count,
             added_count=added_count,
             deleted_count=deleted_count,
